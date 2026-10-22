@@ -1485,7 +1485,34 @@ const CATEGORIES = {
   supermarket:   { label: 'Supermercados latinos', label_en: 'Latin Markets',   color: '#3D7A3D', emoji: '🛒' },
 };
 
-const BUSINESSES = [
+// =====================================================
+// SUPABASE CONFIG
+// =====================================================
+const SUPABASE_URL = 'https://flabnvfdnylblrqxhkhf.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_qWm2swH8Hno_kRwwKanIKg_W-gw867l';
+
+async function fetchBusinesses() {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/businesses?select=*&active=eq.true&order=sort_order.asc`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+    );
+    if (!res.ok) throw new Error('Supabase error ' + res.status);
+    const rows = await res.json();
+    // Convert snake_case → camelCase for compatibility
+    return rows.map(r => ({
+      ...r,
+      brandColor: r.brand_color,
+      googleMaps: r.google_maps,
+    }));
+  } catch (e) {
+    console.error('Error cargando negocios:', e);
+    return BUSINESSES_FALLBACK; // fallback local si falla
+  }
+}
+
+// Fallback por si Supabase no responde (mantiene los datos originales)
+const BUSINESSES_FALLBACK = [
   // POMPANO BEACH — Negocios reales verificados (fuente: investigación YourMenu Lote 1, ago 2026)
   {
     id: 'pb-001',
@@ -2009,6 +2036,8 @@ const BUSINESSES = [
   }
 ];
 
+let BUSINESSES = BUSINESSES_FALLBACK;
+
 // =====================================================
 // APP STATE
 // =====================================================
@@ -2029,11 +2058,15 @@ let state = {
 // INIT
 // =====================================================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   initGeoSelects();
-  initMap();
   initEvents();
   applyLang();
+
+  // Cargar negocios desde Supabase (o fallback local)
+  BUSINESSES = await fetchBusinesses();
+
+  initMap();
 });
 
 function initGeoSelects() {
@@ -2385,42 +2418,43 @@ function openDetail(biz) {
   const actionsEl = document.getElementById('detail-actions');
   let actionsHTML = '';
 
+  // Botón principal: Google Maps / Business profile (ver reseñas)
   if (biz.googleMaps) {
     actionsHTML += `<a href="${biz.googleMaps}" target="_blank" rel="noopener noreferrer" class="action-btn action-primary">
-      ${svgMap()} ${state.lang === 'es' ? 'Ver en Google Maps' : 'View on Google Maps'}
-    </a>`;
-  } else {
-    actionsHTML += `<span class="action-btn action-unavail" title="Disponible al registrar el negocio">
-      ${svgMap()} ${state.lang === 'es' ? 'Google Maps' : 'Google Maps'}
-    </span>`;
-  }
-
-  if (biz.googleMaps) {
-    const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.address + ', ' + biz.city + ', FL')}`;
-    actionsHTML += `<a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="action-btn action-secondary">
-      ${svgRoute()} ${state.lang === 'es' ? 'Cómo llegar' : 'Directions'}
+      ${svgMap()} ${state.lang === 'es' ? 'Ver en Google · Reseñas' : 'Google · Reviews'}
     </a>`;
   }
 
+  // Cómo llegar
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.address + ', ' + biz.city + ', FL')}`;
+  actionsHTML += `<a href="${directionsUrl}" target="_blank" rel="noopener noreferrer" class="action-btn action-secondary">
+    ${svgRoute()} ${state.lang === 'es' ? 'Cómo llegar' : 'Directions'}
+  </a>`;
+
+  // Teléfono (llamada directa en móvil)
   if (biz.phone) {
-    actionsHTML += `<button onclick="copyText('${biz.phone}')" class="action-btn action-secondary">
-      ${svgPhone()} Llamar
-    </button>`;
+    const phoneClean = biz.phone.replace(/\D/g, '');
+    actionsHTML += `<a href="tel:${phoneClean}" class="action-btn action-secondary">
+      ${svgPhone()} ${biz.phone}
+    </a>`;
   }
 
+  // WhatsApp
   if (biz.whatsapp) {
     actionsHTML += `<a href="https://wa.me/${biz.whatsapp}" target="_blank" rel="noopener noreferrer" class="action-btn action-green">
       ${svgWA()} WhatsApp
     </a>`;
   }
 
+  // Sitio web
   if (biz.web) {
+    const webShort = biz.web.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
     actionsHTML += `<a href="${biz.web}" target="_blank" rel="noopener noreferrer" class="action-btn action-secondary">
-      ${svgWeb()} Web
+      ${svgWeb()} ${webShort}
     </a>`;
   }
 
-  actionsHTML += `<div class="action-ext-note">Los enlaces de Google Maps abren en una nueva pestaña</div>`;
+  actionsHTML += `<div class="action-ext-note">Los enlaces abren en una nueva pestaña</div>`;
   actionsEl.innerHTML = actionsHTML;
 
   // Verification
@@ -2475,9 +2509,11 @@ function openMobileDetail(biz) {
     </div>
 
     <div style="display:flex;flex-wrap:wrap;gap:8px">
-      ${biz.googleMaps ? `<a href="${biz.googleMaps}" target="_blank" rel="noopener noreferrer" class="action-btn action-primary" style="flex:1;justify-content:center">${svgMap()} Google Maps</a>` : '<span class="action-btn action-unavail" style="flex:1;justify-content:center">Google Maps</span>'}
-      ${biz.phone ? `<button onclick="copyText('${biz.phone}')" class="action-btn action-secondary">${svgPhone()} Llamar</button>` : ''}
-      ${biz.whatsapp ? `<a href="https://wa.me/${biz.whatsapp}" target="_blank" rel="noopener noreferrer" class="action-btn action-green">${svgWA()} WA</a>` : ''}
+      ${biz.googleMaps ? `<a href="${biz.googleMaps}" target="_blank" rel="noopener noreferrer" class="action-btn action-primary" style="flex:1;justify-content:center">${svgMap()} Google · Reseñas</a>` : ''}
+      <a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.address + ', ' + biz.city + ', FL')}" target="_blank" rel="noopener noreferrer" class="action-btn action-secondary" style="flex:1;justify-content:center">${svgRoute()} Cómo llegar</a>
+      ${biz.phone ? `<a href="tel:${biz.phone.replace(/\D/g,'')}" class="action-btn action-secondary">${svgPhone()} Llamar</a>` : ''}
+      ${biz.whatsapp ? `<a href="https://wa.me/${biz.whatsapp}" target="_blank" rel="noopener noreferrer" class="action-btn action-green">${svgWA()} WhatsApp</a>` : ''}
+      ${biz.web ? `<a href="${biz.web}" target="_blank" rel="noopener noreferrer" class="action-btn action-secondary">${svgWeb()} Web</a>` : ''}
     </div>
 
     ${biz.hours ? `
