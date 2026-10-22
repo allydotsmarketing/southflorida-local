@@ -561,18 +561,19 @@ input {
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: box-shadow 0.15s, border-color 0.15s, border-width 0.15s;
   border: 3px solid #666;
   position: relative;
   overflow: hidden;
 }
 .map-marker:hover {
-  transform: scale(1.12);
   box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  border-color: white;
 }
 .map-marker.active {
-  transform: scale(1.2);
   box-shadow: 0 5px 18px rgba(0,0,0,0.5);
+  border-width: 4px;
+  border-color: white;
   z-index: 100 !important;
 }
 
