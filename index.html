@@ -440,25 +440,7 @@ input {
 .biz-card.active { background: var(--accent-light); }
 
 .biz-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  font-weight: 700;
-  color: white;
-  overflow: hidden;
-  position: relative;
-}
-
-.biz-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 10px;
+  display: none;
 }
 
 .biz-info { flex: 1; min-width: 0; }
@@ -570,16 +552,17 @@ input {
 
 /* Custom map marker — círculo estilo Google Maps */
 .map-marker {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
+  background: white;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   transition: transform 0.15s, box-shadow 0.15s;
-  border: 2.5px solid white;
+  border: 3px solid #666;
   position: relative;
   overflow: hidden;
 }
@@ -2156,12 +2139,12 @@ function addMarker(biz) {
   const el = document.createElement('div');
   el.className = 'map-marker' + (state.selectedId === biz.id ? ' active' : '');
   el.style.cssText = `
-    width:40px;height:40px;
-    background:${color};
+    width:38px;height:38px;
+    background:white;
     border-radius:50%;
     display:flex;align-items:center;justify-content:center;
-    cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.35);
-    border:2.5px solid white;
+    cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    border:3px solid ${color};
     position:relative;
     overflow:hidden;
     transition:transform 0.15s,box-shadow 0.15s;
@@ -2218,7 +2201,7 @@ function selectBusiness(id) {
   if (state.selectedId && state.markers[state.selectedId]) {
     const oldMarkerEl = state.markers[state.selectedId].getElement();
     oldMarkerEl.style.transform = '';
-    oldMarkerEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.35)';
+    oldMarkerEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
     oldMarkerEl.style.zIndex = '5';
   }
   document.querySelectorAll('.biz-card.active').forEach(c => c.classList.remove('active'));
