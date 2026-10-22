@@ -2070,15 +2070,86 @@ function initMap() {
   state.map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
   state.map.on('load', () => {
+    // Add GeoJSON source + circle layer — native canvas, never drifts
+    state.map.addSource('businesses', {
+      type: 'geojson',
+      data: buildGeoJSON()
+    });
+
+    // Outer ring (selected state)
+    state.map.addLayer({
+      id: 'biz-selected-ring',
+      type: 'circle',
+      source: 'businesses',
+      filter: ['==', ['get', 'id'], ''],
+      paint: {
+        'circle-radius': 22,
+        'circle-color': '#ffffff',
+        'circle-stroke-color': ['get', 'color'],
+        'circle-stroke-width': 4,
+        'circle-opacity': 1,
+        'circle-stroke-opacity': 1,
+      }
+    });
+
+    // Normal circles
+    state.map.addLayer({
+      id: 'biz-circles',
+      type: 'circle',
+      source: 'businesses',
+      paint: {
+        'circle-radius': [
+          'case', ['get', 'featured'], 14, 11
+        ],
+        'circle-color': ['get', 'color'],
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 2.5,
+        'circle-opacity': 0.92,
+      }
+    });
+
+    // Click on circle
+    state.map.on('click', 'biz-circles', (e) => {
+      const id = e.features[0].properties.id;
+      selectBusiness(id);
+    });
+
+    // Cursor
+    state.map.on('mouseenter', 'biz-circles', () => {
+      state.map.getCanvas().style.cursor = 'pointer';
+    });
+    state.map.on('mouseleave', 'biz-circles', () => {
+      state.map.getCanvas().style.cursor = '';
+    });
+
     renderList();
     renderMarkers();
   });
 
   state.map.on('click', (e) => {
-    // Click on empty map — close detail
-    const features = state.map.queryRenderedFeatures(e.point);
+    const features = state.map.queryRenderedFeatures(e.point, { layers: ['biz-circles'] });
     if (!features.length) closeDetail();
   });
+}
+
+function buildGeoJSON() {
+  const filtered = getFiltered();
+  return {
+    type: 'FeatureCollection',
+    features: filtered.map(biz => {
+      const cat = CATEGORIES[biz.cats[0]];
+      return {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [biz.lng, biz.lat] },
+        properties: {
+          id: biz.id,
+          name: biz.name,
+          color: biz.brandColor || cat?.color || '#666666',
+          featured: biz.featured || false,
+        }
+      };
+    })
+  };
 }
 
 // =====================================================
@@ -2197,80 +2268,17 @@ function createComingSoonCard(city) {
 // =====================================================
 
 function renderMarkers() {
-  // Remove existing markers
-  Object.values(state.markers).forEach(m => m.remove());
-  state.markers = {};
-
-  const filtered = getFiltered();
   const isPompano = !state.city || state.city === 'Pompano Beach';
 
   if (!isPompano) {
-    // Fly to selected city approximate center
     flyToCity(state.county, state.city);
     return;
   }
 
-  filtered.forEach(biz => {
-    addMarker(biz);
-  });
-}
-
-function addMarker(biz) {
-  const cat = CATEGORIES[biz.cats[0]];
-  const color = biz.brandColor || cat?.color || '#666';
-  const emoji = biz.emoji || cat?.emoji || '🏪';
-
-  const el = document.createElement('div');
-  el.className = 'map-marker' + (state.selectedId === biz.id ? ' active' : '');
-  el.style.cssText = `
-    width:38px;height:38px;
-    background:white;
-    border-radius:50%;
-    display:flex;align-items:center;justify-content:center;
-    cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3);
-    border:3px solid ${color};
-    position:relative;
-    overflow:hidden;
-    transition:transform 0.15s,box-shadow 0.15s;
-    z-index:${biz.featured ? 10 : 5};
-  `;
-  el.setAttribute('aria-label', biz.name);
-  el.setAttribute('role', 'button');
-  el.setAttribute('tabindex', '0');
-
-  const inner = document.createElement('div');
-  inner.style.cssText = 'font-size:18px;line-height:1;width:100%;height:100%;display:flex;align-items:center;justify-content:center;border-radius:50%;overflow:hidden;';
-  inner.textContent = emoji;
-  el.appendChild(inner);
-
-  if (biz.featured) {
-    const star = document.createElement('div');
-    star.style.cssText = `
-      position:absolute;top:-3px;right:-3px;
-      width:13px;height:13px;
-      background:#FFB800;border-radius:50%;
-      border:2px solid white;
-    `;
-    el.appendChild(star);
+  // Update GeoJSON source — native canvas circles never drift
+  if (state.map.getSource('businesses')) {
+    state.map.getSource('businesses').setData(buildGeoJSON());
   }
-
-  el.addEventListener('click', (e) => {
-    e.stopPropagation();
-    selectBusiness(biz.id);
-  });
-
-  el.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      selectBusiness(biz.id);
-    }
-  });
-
-  const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-    .setLngLat([biz.lng, biz.lat])
-    .addTo(state.map);
-
-  state.markers[biz.id] = marker;
 }
 
 // =====================================================
@@ -2281,23 +2289,14 @@ function selectBusiness(id) {
   const biz = BUSINESSES.find(b => b.id === id);
   if (!biz) return;
 
-  // Deselect old
-  if (state.selectedId && state.markers[state.selectedId]) {
-    const oldMarkerEl = state.markers[state.selectedId].getElement();
-    oldMarkerEl.style.transform = '';
-    oldMarkerEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-    oldMarkerEl.style.zIndex = '5';
-  }
+  // Deselect old (ring handled by setFilter below)
   document.querySelectorAll('.biz-card.active').forEach(c => c.classList.remove('active'));
 
   state.selectedId = id;
 
-  // Highlight marker
-  if (state.markers[id]) {
-    const el = state.markers[id].getElement();
-    el.style.transform = 'scale(1.2)';
-    el.style.boxShadow = '0 6px 20px rgba(0,0,0,0.5)';
-    el.style.zIndex = '100';
+  // Highlight via layer filter — no DOM marker to move
+  if (state.map.getLayer('biz-selected-ring')) {
+    state.map.setFilter('biz-selected-ring', ['==', ['get', 'id'], id]);
   }
 
   // Highlight list card
@@ -2463,12 +2462,9 @@ function openDetail(biz) {
 function closeDetail() {
   document.getElementById('detail').classList.remove('open');
 
-  // Deselect
-  if (state.selectedId && state.markers[state.selectedId]) {
-    const el = state.markers[state.selectedId].getElement();
-    el.style.transform = 'rotate(-45deg)';
-    el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-    el.style.zIndex = BUSINESSES.find(b=>b.id===state.selectedId)?.featured ? '10' : '5';
+  // Clear selection ring
+  if (state.map.getLayer('biz-selected-ring')) {
+    state.map.setFilter('biz-selected-ring', ['==', ['get', 'id'], '']);
   }
   document.querySelectorAll('.biz-card.active').forEach(c => c.classList.remove('active'));
   state.selectedId = null;
